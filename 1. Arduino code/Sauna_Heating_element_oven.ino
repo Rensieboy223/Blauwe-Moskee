@@ -13,6 +13,7 @@
 
 // Eeprom Addresses
 // 6 adresses for the thermcouple on the cart 
+// Adres hieronder voor het sturen van data naar scherm
 int TCA1 = 0;
 int TCA2 = 2;
 int TCA3 = 4;
@@ -43,6 +44,7 @@ bool SendData = false;
 int thermoDO = 38;
 int thermoCLK = 40;
 
+//Waardes voor uitlezen van SD-kaart
 //SD card Reader
 bool check = false;
 File myFile; // create file for writing data to SD Card shield.
@@ -59,6 +61,7 @@ int thermoCS5 = 32;
 int thermoCS6 = 34;
 int thermoCS7 = 36;
 
+// Waardes voor lezen en doorsturen naar scherm
 //Read Nextion command temp and time
 int ReconW = 4;
 int FileName = 3;
@@ -191,6 +194,7 @@ int NTS = 0;
 int CS = 0;
 
 AutoPID myPID(&temperature, &Setpoint, &outputVal, outputMin, outputMax , KP, KI, KD);
+/// Alles hierboven zijn allemaal waardes die gebruitk worden in de code
 
 String b;
 
@@ -207,25 +211,30 @@ void setup()
   analogWrite(OUTPUT_PINHTR2, 0);
   analogWrite(OUTPUT_PINHTR3, 0);
 
-  //Start serial ports
+  /// Start serial ports
+  /// Wordt gebruikt voor debuggen op een baudrate van 9600
   DebugSerial.begin(9600);
+  // Wordt gebruikt voor het versturen van informatie baudrate 115200
   NextionSerial.begin(115200);
 
   // Load Thermocouple Offsets form EEPROM including negative values
+  /// EEPROM betekent  (Electrically Erasable Programmable Read-Only Memory), zit niet meer op de GIGA R1. Haalt eigenlijk opgeslagen data op.
   ThermoVal1 = (int8_t)EEPROM.read(TCA1);
   ThermoVal2 = (int8_t)EEPROM.read(TCA2);
   ThermoVal3 = (int8_t)EEPROM.read(TCA3);
   ThermoVal4 = (int8_t)EEPROM.read(TCA4);
   ThermoVal5 = (int8_t)EEPROM.read(TCA5);
   ThermoVal6 = (int8_t)EEPROM.read(TCA6);
-
+  
+  /// Correctie van thermocouples
   ThermoCorrection2 = ThermoVal1 * 0.25;
   ThermoCorrection3 = ThermoVal2 * 0.25;
   ThermoCorrection4 = ThermoVal3 * 0.25;
   ThermoCorrection5 = ThermoVal4 * 0.25;
   ThermoCorrection6 = ThermoVal5 * 0.25;
   ThermoCorrection7 = ThermoVal6 * 0.25;
-
+  
+  /// Doorgeven van offset naar Scherm
   DebugSerial.println("OffSet form EEPROM for Thermocouple 2: ");
   DebugSerial.println(ThermoVal1);
   DebugSerial.println(ThermoCorrection2);
@@ -246,14 +255,21 @@ void setup()
   DebugSerial.println(ThermoCorrection7);
 
   //Setup PID Bang Bang
+  /// Een PID is een controlleur die constant errors bijhoud en errors verminderd
+  /// Bang Bang is een uit/aan controller die wel of geen signaal geeft aan de hand van de variabele
   myPID.setBangBang(bangOn, bangOff);
-  //set PID update interval to 250ms
+  //set PID update interval to 250ms (meet om de 250 ms)
   myPID.setTimeStep(250);
 
+  /// Checkt hier of SD geinstalleerd is
   pinMode(53, OUTPUT); //To check if the micro SD is installed
-
+ 
+  /// Naar scherm sturen dat SD installeerd is
   DebugSerial.print("Initializing SD card...");
 
+  /// De loop om een cure te starten. Eerst wachten op scherm, dan start sturen na scherm nadat de cure is geladen. De loop blijft gewoon doordraaien ook is het nextion serial niet ready
+  /// Nextion serial is de data uit de het scherm die de presets in geheugen heeft.
+  /// Weergeeft nog een aantal laad texten. Best dom dat de loop blijft doordraaien, ook als het scherm nog niet ingeladen is gaat die al draaien wat niet lekker werkt in de praktijk.
   while (!NextionSerial)
   {
     DebugSerial.println("Waiting on Nextion Screen");
@@ -267,9 +283,11 @@ void setup()
   sendCmd("LiveTemp.txt=\"Initializing\"");
   sendCmd(""); // clear the buffer
   delay(100);
-
+  
+  /// wacht op  start commando (moet single source worden vindt ik)
   DebugSerial.println("Awaiting Command of the Nextion Screen or DebugSerial");
 
+  /// Checkt op SD-kaart
   //Nextion recieve data Temp and Time
   TotalChar = ReconW + FileName;
   if (SD.begin())
@@ -283,7 +301,8 @@ void setup()
     sendCmd("page1.SDcardState.txt = \"No SD card istalled\"");
     FileNameCheck = true;
   }
-
+  
+/// Code hieronder zorgt ervoor dat deze waardes gebruikt worden in een LOOP en slaat data op van deze variabele in de LOOP
 }
 void loop()
 {
@@ -337,6 +356,7 @@ void loop()
   String THC6;
   String THC7;
 
+  /// Dit hieronder checkt de data van het scherm, haalt het door de Debug en weergeeft "Processing Data"
   if (NextionSerial.available() > 0) {
 
     if (Dataprocessing == false) {
@@ -358,6 +378,7 @@ void loop()
       sendCmd("t16.txt=\"Processing Data\"");
     }
 
+    /// Kijkt of die een specifieke waarde krijgt volgt bij Z en bepaald hieraan of de calibratie moet beginnen
     char c = NextionSerial.read();  //gets one byte from serial buffer
 
     if (c == '.') {
@@ -368,7 +389,10 @@ void loop()
         DebugSerial.println(ThermoProces);
       }
     }
-
+    
+    /// wacht totdat de byte "C" binnen komt en gelijk is aan "$"
+    /// slaat dan tijdelijk data van scherm op als "Trash"
+    /// Processes dan de data en stuur dit naar het scherm
     if (c == '$') {
       String Trash = readString;
       DebugSerial.print("The recieved Trash: ");
@@ -384,7 +408,8 @@ void loop()
 
       readString += c; //makes the string readString
     }
-
+    
+    /// kijkt of de "C" die binnekomt gelijk is aan "!" en maakt de "Trash data" leeg
     if (c == '!') {
       String Trash = readString;
       DebugSerial.print("The recieved Trash: ");
@@ -392,7 +417,8 @@ void loop()
       Trash = "";
       readString = ""; //clears variable for new input
     }
-
+    
+    /// kijkt of "C" die binnenkomt gelijk is aan "x" en herkent dat er geen filename is gegeven. Maakt hierna de data schoon voor nieuwe data.
     if (c == 'x') {
       DebugSerial.println("No File Name has been given");
       FileNameCheck = true;
@@ -400,24 +426,28 @@ void loop()
       //sendCmd("StopSender.val=0");
       readString = ""; //clears variable for new input
     }
-
+    
+    /// Wordt nu niet meer gebruikt voor communicatie (gek dat die er nog wel in staat?)
     if (c == '>') { //Not using fro the new communication, used for hand shake methode -> Force data all the time
       DebugSerial.println("Recieved Nexttion Data request");
       SendData = true;
       readString = ""; //clears variable for new input
     }
-
+    
+    /// Een extra manier om de oven de laten draaien zonder file name (in de praktijk werkt deze niet, je hebt altijd een lognaam nodig), onnodig in mijn optiek.
     if (c == '(') {
       FileWithName = false;
       DebugSerial.print("The up comming Run doesn't require a file name ");
     }
-
+    
+   /// De cure heeft wel een filename nodig (snap niet waarvoor dit nodig is, werkt toch niet)
     if (c == ')') {
       FileWithName = true;
       DebugSerial.print("The up comming Run requires a File Name: ");
       DebugSerial.print(FileWithName);
     }
-
+    
+   /// Stop Commando om de cure te stoppen (beetje ingewikkeld)
     if (c == '@') {
       sendCmd("StopSender.val=0"); //Send to Nextion the running state
       DebugSerial.println("A Stop command has been isued");
@@ -433,7 +463,9 @@ void loop()
       sendCmd("t16.txt=\" \"");
       TempHeatUpState = 15; //Stop command
     }
-
+    
+    /// Start het lees en update proces aan het begin de cure cylce.
+    /// zet dataprocessen aan, convert letters naar cijfers, zegt data recieved, en update de tijdwaardes en temparatuurwaardes van de thermocouples bij "False". Bij "True" skipt die dit allemaal en start gewoon.
     if (c == ',') {
       Dataprocessing = true;
       while (readString.length() > 1) {
@@ -485,14 +517,18 @@ void loop()
           Dataprocessing = false;
           sendCmd("StopSend.val=0");
         }
-
+        
+        /// Als die ":" binnen krijgt stuurt die de speedset naar het scherm en past deze aan op thermocouples hoe snel deze mogen stijgen volgens de Speedset (Ramptime)
         if (readString.indexOf(':') > 0) {
           SpeedSet = n;
           DebugSerial.print("SpeedSet: ");
           DebugSerial.println(SpeedSet);
           Dataprocessing = false;
         }
-
+        
+        /// Bij het ontvangne van "#" zal deze de data loggen op de "Name" van de log en deze omzetten naar een ".TXT" bestand. 
+        /// Daarna checkt die of de bestandsnaam al bestaat en geeft 'Error' als deze al bestaat.
+        /// Anders zegt die dat er geen "File name exists" en maakt de variabele leeg voor nieuwe naam.
         if (readString.indexOf('#') > 0 && FileWithName == true) {
           if (readString.indexOf('#')) Name = readString;
           DebugSerial.print("The recieved name is: ");
@@ -531,7 +567,8 @@ void loop()
       readString += c; //makes the string readString
     }
   }
-
+  
+/// Thermocouple Offset op het scherm aanpassen en weergeven via + en - knoppen met stappen van 0,25
   while (ThermoProces == true && Dataprocessing == false) {
 
     char c = NextionSerial.read();
@@ -669,6 +706,7 @@ void loop()
     readString = ""; //clears variable for new input
   }
 
+  /// Actuele thermocouple temparatuur en tijd weergeven op scherm met OFFSET die hieoven is berekend natuurlijk
   if (Dataprocessing == false && ThermoProces == false) {
 
     if (Timerecieved == true && Temprecieved == true) {
@@ -709,7 +747,8 @@ void loop()
 
       Timerecieved = false;
       Temprecieved = false;
-
+      
+      /// Het registreren van actuele Temparatuur en Tijd op de SD kaart.
       if (check == true && FileNameCheck == true) {
         DebugSerial.println("Writing Run setting to Micro SD card");
         myFile.println("This run has been excudeted with the following setting: ");
@@ -762,7 +801,10 @@ void loop()
 
       }
     }
-
+    
+    /// Het berekenen van de gemiddelde temparatuur van de thermocouples = Rawtempature + Buffer = NextRunningAverage.
+    /// NextRunningAverage is gelijk aan NextRunningCount (aantal thermocouples) om de loop opnieuw uit te voeren.
+    /// Uiteindelijk komt hieruit de RunningAverageTempature
     float RawTemperature = ((thermocouple.readCelsius()+ ThermoCorrection + thermocouple1.readCelsius()+ ThermoCorrection1) / 2);
 
     RunningAverageBuffer[NextRunningAverage++] = RawTemperature;
@@ -804,6 +846,7 @@ void loop()
     DebugSerial.print("Raw Value Th 8: ");
     DebugSerial.println(thermocouple7.readCelsius() + ThermoCorrection7);
 
+    /// Checken van of de Waardes (temparatuur en tijd) van de Thermocouples kloppen (groter dan 1 zijn)
     if (TIMR == true && TEMPR == true && FileNameCheck == true) {
       if (T1 >= 1)TimeaddC ++;
       if (T2 >= 1)TimeaddC ++;
@@ -824,7 +867,8 @@ void loop()
       DebugSerial.println(TimeaddC);
 
       RunningState = 1;
-
+      
+     /// Rampsetting hieronder (hoe snel de tempatuuur moet stijgen) hoe hoger de Ramp hoe langzamer de stijging
       TIMR = false;
       TEMPR = false;
 
@@ -837,7 +881,8 @@ void loop()
       if (SpeedSet == 3) {
         RampTime = 4;
       }
-
+      
+     /// Bereking hoesnel de tempatuur moet stijgen
       MAXTemp = max(Temp14, max(Temp13, max(Temp12, max(Temp11, max(Temp10, max(Temp9, max(Temp8, max(Temp7, max(Temp6, max(Temp5, max(Temp4, max(Temp3, max(Temp2, Temp1)))))))))))));
       Serial.print("Maximum value is: ");
       Serial.println(MAXTemp);
@@ -845,7 +890,8 @@ void loop()
       TotalRampTime = (MAXTemp - 20) / RampTime;
       DebugSerial.print("Total Ramp Time left: ");
       DebugSerial.println(TotalRampTime);
-
+      
+      /// Tijdsom voor TOTAL TIME LEFT (die niet werkt)
       TimeSum = T1 + T2 + T3 + T4 + T5 + T6 + T7 + T8 + T9 + T10 + T11 + T12 + T13 + T14;
 
       ToTimeLeft = currentMillis;
@@ -867,7 +913,7 @@ void loop()
 
     }
 
-
+    /// Schrijft omde 5000 miliseconden de temparatuur naar de SD-kaart 
     if (RunningState == 1 && ThermoCheck == 1 && SpeedSet != 0) {
       DebugSerial.println("Heating proces in Progress");
 
@@ -890,12 +936,16 @@ void loop()
 
         WriteSDDelta = currentMillis;
       }
-
+      
+     /// Overheating cdoe (werkt niet)
+      
       /*if(RunningAverageTemperature>=120)
         TempHeatUpState = 14;
         sendCmd("RunningState.txt=\"OVERHEATING\""); //Send to Nextion the OVERHEATING state
       */
 
+      /// Bepaald het verwarmingsproces en geeft aan per thermocouple hoe warm die is en wat de SETTEMP is. Bij Case14 eindigt die het programma.
+      /// Eindigen van programma gebeurd nu soms ineens na data inladen. 
       sendCmd("RunningState.txt=\"Running\""); //Send to Nextion the running state
 
       switch (TempHeatUpState)
@@ -1014,7 +1064,7 @@ void loop()
           return;
           break;
       }
-
+      /// Neem de average van de thermocouples temparatuur en vergelijkt deze met de SETTEMP met een marge van 2 graden. Hiermee naar de volgende stage of blijven verwarmen.
       DebugSerial.print("Switch state: ");
       DebugSerial.println(TempHeatUpState);
 
@@ -1028,13 +1078,16 @@ void loop()
       //((thermocouple.readCelsius() + ThermoCorrection) + (thermocouple1.readCelsius() + ThermoCorrection1) + (thermocouple2.readCelsius() + ThermoCorrection2) + (thermocouple3.readCelsius() + ThermoCorrection3) / 4) >= SetTemp + 12 ||
       
      float ThermoTotalAvg = (((thermocouple2.readCelsius() + ThermoCorrection2) + (thermocouple3.readCelsius() + ThermoCorrection3) + (thermocouple4.readCelsius() + ThermoCorrection4) + (thermocouple5.readCelsius() + ThermoCorrection5) + (thermocouple6.readCelsius() + ThermoCorrection6) + (thermocouple7.readCelsius() + ThermoCorrection7)) / 6);
+     /// Leest de thermocouples average temp en past hierop aan
       
      if (ThermoTotalAvg >= SetTemp - 2) Setpoint = SetTemp;
-
+     /// vergelijkt met SETTEMP
+      
       //if(((thermocouple.readCelsius()+ThermoCorrection)||(thermocouple1.readCelsius()+ThermoCorrection1)||(thermocouple2.readCelsius()+ThermoCorrection2)||(thermocouple3.readCelsius()+ThermoCorrection3) >= SetTemp) Setpoint = SetTemp;
 
       else   Setpoint = SetTemp + 10; //deze instelling maakt het mogelijk om sneller te verwarmen VB set temp = 40 deze instelling maakt het +5 dus 45 graden.
-
+      /// Zorgt voor sneller verwarmen van oven door SETTEMP met 10 graden te verhogen
+      
       if (ThermoTotalAvg >= SetTemp - 2) {
         if (TTS == false)
         {
@@ -1042,8 +1095,10 @@ void loop()
           deltaTime = currentMillis;
           TTS = true;
         }
-
-
+       
+        /// vergelijkt de stagetijd met total tijd en kijkt of die optijd op temparatuur is. Als TTS (Target Temperature Set) false is verwarmt die door, anders naar volgende stage.
+        /// Met intteruptie kan dit zorgen voor verwarring.
+        
         // if((unsigned long)(currentMillis - deltaTime) >= (Time*MultiplierTime*1000))
 
         if ((unsigned long)(currentMillis - deltaTime) >= (Time * MultiplierTime * 1000))
@@ -1053,7 +1108,8 @@ void loop()
         }
 
       }
-
+      
+      /// Update de TL (Time left) aan de hand van of de TTS (Target Temperature Set) is bereikt of niet. TL heeft nooit gewerkt.
       if (Time >= 0 && TTS == true)
       {
         TL = (Time - ((currentMillis - deltaTime) / 60000));
@@ -1079,6 +1135,7 @@ void loop()
 
     // Rens hier kan je snelheid wijzegingen doen
     // Max = 255 Nul = 0 
+    /// Het aantal signalen naar de Verwarmingelement (bepaald het vermogen maar werkt niet zeer effectief en is per oven element anders)
     if (SpeedSet == 1) {
       RampTime = 1;
       if (Setpoint >= 110) myPID.setOutputRange(0, 180);
@@ -1107,7 +1164,8 @@ void loop()
     else {
       DebugSerial.println("No SpeedSet Selected");
     }
-
+   
+    /// Verklaren van variabelen
     temperature = RunningAverageTemperature;
     myPID.run();
     analogWrite(OUTPUT_PINHTR1, outputVal);
@@ -1143,6 +1201,9 @@ void loop()
     mytext = "\"" + message + "\"";
     //myvalue = "\"" + Tempvalue + "\"";
 
+    /// Checken van data en weergeven van data op het scherm.
+    /// Ook checkt het en leest het de thermocouple themparaturen uit en zet deze om naar strings
+    /// Het toont ool TL en TLR (Time left to Run) aan de hand van de benoemde berekeningen in minuten
     if (SendData == true && currentMillis - SendTemp >= 1500) //used for Hand shake methode
       //if (currentMillis - SendTemp >= 1500 && Dataprocessing == false)
     {
